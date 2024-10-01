@@ -1,0 +1,193 @@
+import csv
+import sys
+
+from util import Node, StackFrontier, QueueFrontier
+
+# Maps names to a set of corresponding person_ids
+names = {}
+
+# Maps person_ids to a dictionary of: name, birth, movies (a set of movie_ids)
+people = {}
+
+# Maps movie_ids to a dictionary of: title, year, stars (a set of person_ids)
+movies = {}
+
+
+def load_data(directory):
+    """
+    Load data from CSV files into memory.
+    """
+    # Load people
+    with open(f"{directory}/people.csv", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            people[row["id"]] = {
+                "name": row["name"],
+                "birth": row["birth"],
+                "movies": set(),
+            }
+            if row["name"].lower() not in names:
+                names[row["name"].lower()] = {row["id"]}
+            else:
+                names[row["name"].lower()].add(row["id"])
+
+    # Load movies
+    with open(f"{directory}/movies.csv", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            movies[row["id"]] = {
+                "title": row["title"],
+                "year": row["year"],
+                "stars": set(),
+            }
+
+    # Load stars
+    with open(f"{directory}/stars.csv", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                people[row["person_id"]]["movies"].add(row["movie_id"])
+                movies[row["movie_id"]]["stars"].add(row["person_id"])
+            except KeyError:
+                pass
+
+
+def main():
+    if len(sys.argv) > 2:
+        sys.exit("Usage: python degrees.py [directory]")
+    directory = sys.argv[1] if len(sys.argv) == 2 else "large"
+
+    # Load data from files into memory
+    print("Loading data...")
+    load_data(directory)
+    print("Data loaded.")
+
+    while True:
+        source = person_id_for_name(input("Name: "))
+        if source is None:
+            print("Person not found.")
+            continue
+        target = person_id_for_name(input("Name: "))
+        if target is None:
+            print("Person not found.")
+            continue
+
+        path = shortest_path(source, target)
+
+        if path is None:
+            print("Not connected.")
+        else:
+            degrees = len(path)
+            print(f"{degrees} degrees of separation.")
+            path = [(None, source)] + path
+            for i in range(degrees):
+                person1 = people[path[i][1]]["name"]
+                person2 = people[path[i + 1][1]]["name"]
+                movie = movies[path[i + 1][0]]["title"]
+                print(f"{i + 1}: {person1} and {person2} starred in {movie}")
+
+
+def shortest_path(source, target):
+    """
+    Returns the shortest list of (movie_id, person_id) pairs
+    that connect the source to the target.
+
+    If no possible path, returns None.
+    """
+
+    # Zero degrees of separation our initial state is our goal state
+    if source == target:
+        return []
+
+    # Create a queue data structure to represent our frontier
+    frontier = QueueFrontier()
+
+    # Use a set to store our explored states
+    explored = set()
+
+    # Add the source node to our frontier
+    frontier.add(Node(parent=None, state=source, action=None))
+
+    # Begin searching
+    while not frontier.empty():
+        current = frontier.remove()
+
+        # Explore our current node
+        neighbors = neighbors_for_person(current.state)
+
+        # Add our current state to the set of explored nodes
+        explored.add(current.state)
+
+        # Loop through neighbours, adding unexplored ones to the frontier
+        for n in neighbors:
+            movie_id, person_id = n
+            neighbour_node = Node(parent=current, state=person_id, action=movie_id)
+
+            if person_id not in explored:
+                # If a neighbour node is our goal state, simply return the solution
+                if person_id == target:
+                    return build_solution(neighbour_node)
+
+                frontier.add(neighbour_node)
+
+    # Return None if no solution has been found (frontier is empty)
+    return None
+
+
+def build_solution(node):
+    """
+    Given a solution node, builds a list of states and actions tuples that resulted
+    in that solution.
+    """
+    # Backtrack to trace the path we found
+    path = []
+    while node.parent:
+        path.append((node.action, node.state))
+        node = node.parent
+
+    # Reverse the list to correctly orient the path
+    path.reverse()
+    return path
+
+
+def person_id_for_name(name):
+    """
+    Returns the IMDB id for a person's name,
+    resolving ambiguities as needed.
+    """
+    person_ids = list(names.get(name.lower(), set()))
+    if len(person_ids) == 0:
+        return None
+    elif len(person_ids) > 1:
+        print(f"Which '{name}'?")
+        for person_id in person_ids:
+            person = people[person_id]
+            name = person["name"]
+            birth = person["birth"]
+            print(f"ID: {person_id}, Name: {name}, Birth: {birth}")
+        try:
+            person_id = input("Intended Person ID: ")
+            if person_id in person_ids:
+                return person_id
+        except ValueError:
+            pass
+        return None
+    else:
+        return person_ids[0]
+
+
+def neighbors_for_person(person_id):
+    """
+    Returns (movie_id, person_id) pairs for people
+    who starred with a given person.
+    """
+    movie_ids = people[person_id]["movies"]
+    neighbors = set()
+    for movie_id in movie_ids:
+        for person_id in movies[movie_id]["stars"]:
+            neighbors.add((movie_id, person_id))
+    return neighbors
+
+
+if __name__ == "__main__":
+    main()

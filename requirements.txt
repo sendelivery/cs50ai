@@ -27,6 +27,7 @@ numba==0.60.0
 numpy==2.0.2
 packaging==24.1
 pexpect==4.9.0
+pillow==11.0.0
 pomegranate==1.1.0
 ptyprocess==0.7.0
 pycodestyle==2.12.0
